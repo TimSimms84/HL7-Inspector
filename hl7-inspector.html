@@ -131,6 +131,16 @@ textarea:focus { outline: none; border-color: var(--accent); background: white; 
 .comp-name { font-size: 0.68rem; color: var(--text-subtle); }
 .comp-val { font-family: 'Consolas', monospace; font-size: 0.75rem; background: var(--bg-subtle); border-radius: 4px; padding: 3px 7px; margin-top: 2px; color: var(--text); border: 1px solid var(--border-faint); word-break: break-all; }
 .comp-val.empty-comp { color: var(--text-faint); font-style: italic; font-size: 0.7rem; }
+
+.summary-strip {
+  display: none; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 7px 20px; background: var(--dark); border-bottom: 1px solid #2d2d4a;
+  flex-shrink: 0;
+}
+.summary-strip.visible { display: flex; }
+.summary-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: #a5b4fc; }
+.summary-item .summary-icon { font-size: 0.8rem; }
+.summary-item .summary-label { color: #e0e7ff; font-weight: 500; }
 </style>
 </head>
 <body>
@@ -139,6 +149,8 @@ textarea:focus { outline: none; border-color: var(--accent); background: white; 
   <h1>HL7 Inspector</h1>
   <!-- <span class="badge">Local</span> -->
 </header>
+
+<div class="summary-strip" id="summaryStrip"></div>
 
 <div class="input-area">
   <div class="input-row">
@@ -353,7 +365,10 @@ const HL7_COMPONENTS = {
   "OBR-3":  { 1:"Entity Identifier", 2:"Namespace ID" },
   "OBR-4":  { 1:"Identifier", 2:"Text", 3:"Coding System", 4:"Alt Identifier", 5:"Alt Text", 6:"Alt Coding System" },
   "OBX-3":  { 1:"Identifier", 2:"Text", 3:"Coding System", 4:"Alt Identifier", 5:"Alt Text", 6:"Alt Coding System" },
-  "OBX-6":  { 1:"Identifier", 2:"Text", 3:"Coding System" }
+  "OBX-6":  { 1:"Identifier", 2:"Text", 3:"Coding System" },
+  "AL1-3":  { 1:"Identifier", 2:"Text", 3:"Coding System", 4:"Alt Identifier", 5:"Alt Text", 6:"Alt Coding System" },
+  "AL1-4":  { 1:"Identifier", 2:"Text", 3:"Coding System" },
+  "DG1-3":  { 1:"Identifier", 2:"Text", 3:"Coding System", 4:"Alt Identifier", 5:"Alt Text", 6:"Alt Coding System" },
 };
 
 const SEG_CLASS = {
@@ -391,10 +406,41 @@ function parseHL7(text) {
 
 let activeChip = null;
 
+function renderSummary(segments) {
+  const strip = document.getElementById('summaryStrip');
+  strip.innerHTML = '';
+
+  // Patient name from PID-5 (family^given)
+  const pid = segments.find(s => s.name === 'PID');
+  if (pid && pid.raw[5]) {
+    const parts = pid.raw[5].split('^');
+    const family = parts[0] || '';
+    const given  = parts[1] || '';
+    const name   = [family, given].filter(Boolean).join(', ');
+    if (name) strip.innerHTML += `<div class="summary-item"><span class="summary-icon">👤</span><span class="summary-label">${esc(name)}</span></div>`;
+  }
+
+  const counts = [
+    { name: 'ORC', icon: '💊', singular: 'Order',     plural: 'Orders'    },
+    { name: 'AL1', icon: '⚠️',  singular: 'Allergy',   plural: 'Allergies' },
+    { name: 'DG1', icon: '🩺',  singular: 'Diagnosis', plural: 'Diagnoses' },
+  ];
+
+  counts.forEach(({ name, icon, singular, plural }) => {
+    const n = segments.filter(s => s.name === name).length;
+    if (n > 0) {
+      strip.innerHTML += `<div class="summary-item"><span class="summary-icon">${icon}</span><span class="summary-label">${n} ${n === 1 ? singular : plural}</span></div>`;
+    }
+  });
+
+  strip.classList.toggle('visible', strip.children.length > 0);
+}
+
 function renderSegments(segments) {
   const panel = document.getElementById('segmentsPanel');
   panel.querySelectorAll('.segment-row').forEach(e => e.remove());
   document.getElementById('emptyState').style.display = segments.length ? 'none' : 'block';
+  renderSummary(segments);
 
   segments.forEach(seg => {
     const row = document.createElement('div');
@@ -542,6 +588,9 @@ function clearAll() {
   document.getElementById('hl7input').value = '';
   document.querySelectorAll('.segment-row').forEach(e => e.remove());
   document.getElementById('emptyState').style.display = 'block';
+  const strip = document.getElementById('summaryStrip');
+  strip.innerHTML = '';
+  strip.classList.remove('visible');
   resetPanel();
 }
 
